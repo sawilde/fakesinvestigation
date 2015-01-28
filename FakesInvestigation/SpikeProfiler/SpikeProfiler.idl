@@ -1,0 +1,18 @@
+// SpikeProfiler.idl : IDL source for SpikeProfiler
+//
+
+// This file will be processed by the MIDL tool to
+// produce the type library (SpikeProfiler.tlb) and marshalling code.
+
+import "oaidl.idl";
+import "ocidl.idl";
+
+[
+	uuid(ED8A74F0-BAAB-4B09-8A48-3DD8DDA9E775),
+	version(1.0),
+]
+library SpikeProfilerLib
+{
+	importlib("stdole2.tlb");
+};
+

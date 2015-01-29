@@ -12,6 +12,8 @@
 
 using namespace ATL;
 
+#define COM_FAIL_MSG_RETURN_ERROR(hr, msg) if (!SUCCEEDED(hr)) { ATLTRACE(msg, hr); return (hr); }
+#define COM_FAIL_MSG_RETURN_OTHER(hr, ret, msg) if (!SUCCEEDED(hr)) { ATLTRACE(msg, hr); return (ret); }
 
 // CProfilerHook
 
@@ -50,14 +52,29 @@ END_COM_MAP()
 	void FinalRelease()
 	{
 	}
-
 public:
+	CComQIPtr<ICorProfilerInfo4> m_profilerInfo;
+
+private:
+	std::wstring GetModulePath(ModuleID moduleId);
+	std::wstring GetModulePath(ModuleID moduleId, AssemblyID *pAssemblyId);
+	std::wstring GetAssemblyName(AssemblyID assemblyId);
+	BOOL GetTokenAndModule(FunctionID funcId, mdToken& functionToken, ModuleID& moduleId, std::wstring &modulePath, AssemblyID *pAssemblyId);
+	std::wstring GetTypeAndMethodName(FunctionID functionId);
 
 public:
 	virtual HRESULT STDMETHODCALLTYPE Initialize(
 		/* [in] */ IUnknown *pICorProfilerInfoUnk);
 
 	virtual HRESULT STDMETHODCALLTYPE Shutdown(void);
+
+	virtual HRESULT STDMETHODCALLTYPE CProfilerHook::ModuleAttachedToAssembly(
+		/* [in] */ ModuleID moduleId,
+		/* [in] */ AssemblyID assemblyId);
+
+	virtual HRESULT STDMETHODCALLTYPE JITCompilationStarted(
+		/* [in] */ FunctionID functionId,
+		/* [in] */ BOOL fIsSafeToBlock);
 
 };
 

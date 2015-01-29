@@ -17,8 +17,7 @@ namespace TargetTests
                 // Arrange:
                 // Shim DateTime.Now to return a fixed date:
                 System.Fakes.ShimDateTime.NowGet =
-                  () =>
-                  { return new DateTime(2016, 1, 1); };
+                  () => new DateTime(2016, 1, 1);
 
                 Assert.AreEqual(2016, (new MyTime()).GetTheCurrentYear());
             }

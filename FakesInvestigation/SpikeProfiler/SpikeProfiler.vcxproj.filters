@@ -34,6 +34,12 @@
     <ClCompile Include="SpikeProfiler_i.c">
       <Filter>Generated Files</Filter>
     </ClCompile>
+    <ClCompile Include="ProfilerHook.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ProfilerInfo.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -54,6 +60,18 @@
     <ClInclude Include="SpikeProfiler_i.h">
       <Filter>Generated Files</Filter>
     </ClInclude>
+    <ClInclude Include="ProfilerHook.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ProfileBase.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ProfilerInfo.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ProfilerInfoBase.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="SpikeProfiler.rc">
@@ -69,6 +87,12 @@
     </None>
     <None Include="SpikeProfiler.def">
       <Filter>Source Files</Filter>
+    </None>
+    <None Include="ProfilerHook.rgs">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="ProfilerInfo.rgs">
+      <Filter>Resource Files</Filter>
     </None>
   </ItemGroup>
   <ItemGroup>

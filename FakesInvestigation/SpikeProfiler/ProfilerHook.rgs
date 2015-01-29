@@ -1,0 +1,23 @@
+HKCR
+{
+	SpikeProfiler.ProfilerHook.1 = s 'SpikeProfiler ProfilerHook Class'
+	{
+		CLSID = s '{0487FC76-4E1C-41D3-BA20-4F85A1F225C0}'
+	}
+	SpikeProfiler.ProfilerHook = s 'SpikeProfiler ProfilerHook Class'
+	{		
+		CurVer = s 'SpikeProfiler.ProfilerHook.1'
+	}
+	NoRemove CLSID
+	{
+		ForceRemove {0487FC76-4E1C-41D3-BA20-4F85A1F225C0} = s 'ProfilerHook Class'
+		{
+			InprocServer32 = s '%MODULE%'
+			{
+				val ThreadingModel = s 'Both'
+			}
+			TypeLib = s '{ED8A74F0-BAAB-4B09-8A48-3DD8DDA9E775}'
+			Version = s '1.0'
+		}
+	}
+}

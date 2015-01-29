@@ -6,6 +6,7 @@
 
 import "oaidl.idl";
 import "ocidl.idl";
+import "corprof.idl";
 
 [
 	uuid(ED8A74F0-BAAB-4B09-8A48-3DD8DDA9E775),
@@ -14,5 +15,18 @@ import "ocidl.idl";
 library SpikeProfilerLib
 {
 	importlib("stdole2.tlb");
+	[
+		uuid(0487FC76-4E1C-41D3-BA20-4F85A1F225C0)		
+	]
+	coclass ProfilerHook
+	{
+		[default] interface ICorProfilerCallback;
+		interface ICorProfilerCallback2;
+		interface ICorProfilerCallback3;
+#ifndef _TOOLSETV71
+		interface ICorProfilerCallback4;
+		interface ICorProfilerCallback5;
+#endif
+	};
 };
 

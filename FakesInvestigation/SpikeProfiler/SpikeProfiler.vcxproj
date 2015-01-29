@@ -228,6 +228,8 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
       </PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="ProfilerHook.cpp" />
+    <ClCompile Include="ProfilerInfo.cpp" />
     <ClCompile Include="SpikeProfiler.cpp" />
     <ClCompile Include="SpikeProfiler_i.c">
       <CompileAsManaged Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</CompileAsManaged>
@@ -266,6 +268,10 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="dllmain.h" />
+    <ClInclude Include="ProfileBase.h" />
+    <ClInclude Include="ProfilerHook.h" />
+    <ClInclude Include="ProfilerInfo.h" />
+    <ClInclude Include="ProfilerInfoBase.h" />
     <ClInclude Include="Resource.h" />
     <ClInclude Include="SpikeProfiler_i.h" />
     <ClInclude Include="stdafx.h" />
@@ -279,6 +285,8 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="ProfilerHook.rgs" />
+    <None Include="ProfilerInfo.rgs" />
     <None Include="SpikeProfiler.def" />
     <None Include="SpikeProfiler.rgs" />
   </ItemGroup>

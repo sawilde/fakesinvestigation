@@ -15,7 +15,8 @@ using namespace ATL;
 
 class ATL_NO_VTABLE CProfilerInfo :
 	public CComObjectRootEx<CComMultiThreadModel>,
-	//public CComCoClass<CProfilerInfo, &CLSID_ProfilerInfo>,
+	//public CComCoClass<CProfilerInfo>,
+	//public CComObject<IUnknown>,
 	public CProfilerInfoBase
 {
 public:
@@ -46,8 +47,8 @@ public:
 	}
 
 public:
-	virtual HRESULT STDMETHODCALLTYPE GetEventMask(
-		/* [out] */ DWORD *pdwEvents);
+	virtual HRESULT STDMETHODCALLTYPE SetEventMask(
+		/* [in] */ DWORD dwEvents);
 };
 
 

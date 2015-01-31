@@ -14,6 +14,7 @@ using namespace ATL;
 
 #define COM_FAIL_MSG_RETURN_ERROR(hr, msg) if (!SUCCEEDED(hr)) { ATLTRACE(msg, hr); return (hr); }
 #define COM_FAIL_MSG_RETURN_OTHER(hr, ret, msg) if (!SUCCEEDED(hr)) { ATLTRACE(msg, hr); return (ret); }
+#define COM_FAIL_RETURN(hr, ret) if (!SUCCEEDED(hr)) return (ret)
 
 // CProfilerHook
 
@@ -61,6 +62,12 @@ private:
 	std::wstring GetAssemblyName(AssemblyID assemblyId);
 	BOOL GetTokenAndModule(FunctionID funcId, mdToken& functionToken, ModuleID& moduleId, std::wstring &modulePath, AssemblyID *pAssemblyId);
 	std::wstring GetTypeAndMethodName(FunctionID functionId);
+
+	mdMemberRef m_targetLoadProfilerInsteadRef;
+	mdMemberRef m_targetPretendWeLoadedFakesProfilerRef;
+	HRESULT GetInjectedRef(ModuleID moduleId, mdModuleRef &injectedRef);
+	HRESULT GetMsCorlibRef(ModuleID moduleId, mdModuleRef &mscorlibRef);
+	mdTypeRef m_objectTypeRef;
 
 public:
 	virtual HRESULT STDMETHODCALLTYPE Initialize(

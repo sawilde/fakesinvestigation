@@ -5,12 +5,84 @@
 #include "Method.h"
 #include "ProfilerInfo.h"
 
-#define TARGETASSEMBLY1 L"Microsoft.VisualStudio.TestPlatform.Utilities"
-#define TARGETMETHOD1 L"Microsoft.VisualStudio.TestPlatform.Utilities.DefaultTestExecutorLauncher::LaunchProcess"
+#define TESTPLATFORM_UTILITIES_ASSEMBLY L"Microsoft.VisualStudio.TestPlatform.Utilities"
+#define DEFAULTTESTEXECUTOR_LAUNCHPROCESS L"Microsoft.VisualStudio.TestPlatform.Utilities.DefaultTestExecutorLauncher::LaunchProcess"
+#define DEFAULTTESTEXECUTOR_CTOR L"Microsoft.VisualStudio.TestPlatform.Utilities.DefaultTestExecutorLauncher::.ctor"
 
-#define TARGETASSEMBLY2A L"vstest.executionengine"
-#define TARGETASSEMBLY2B L"vstest.executionengine.x86"
-#define TARGETMETHOD2 L"Microsoft.VisualStudio.TestPlatform.TestExecutor.ServiceMain::Main"
+#define TESTPLATFORM_TESTEXECUTOR_CORE_ASSEMBLY L"Microsoft.VisualStudio.TestPlatform.TestExecutor.Core"
+#define TESTEXECUTORMAIN_RUN L"Microsoft.VisualStudio.TestPlatform.TestExecutor.TestExecutorMain::Run"
+#define TESTEXECUTORMAIN_CTOR L"Microsoft.VisualStudio.TestPlatform.TestExecutor.TestExecutorMain::.ctor"
+
+#import <mscorlib.tlb> raw_interfaces_only
+using namespace mscorlib;
+
+namespace {
+	struct __declspec(uuid("2180EC45-CF11-456E-9A76-389A4521A4BE"))
+	IFakesDomainHelper : IUnknown
+	{
+		virtual HRESULT __stdcall AddResolveEventHandler() = 0;
+	};
+}
+
+LPSAFEARRAY GetInjectedDllAsSafeArray()
+{
+	HRSRC hClrHookDllRes = FindResource(g_hInst, MAKEINTRESOURCE(IDR_INJECTED), L"BINDATA");
+	ATLASSERT(hClrHookDllRes != NULL);
+
+	HGLOBAL hClrHookDllHGlb = LoadResource(g_hInst, hClrHookDllRes);
+	ATLASSERT(hClrHookDllHGlb != NULL);
+
+	DWORD dllMemorySize = SizeofResource(g_hInst, hClrHookDllRes);
+
+	LPBYTE lpDllData = (LPBYTE)LockResource(hClrHookDllHGlb);
+	ATLASSERT(lpDllData != NULL);
+
+	SAFEARRAYBOUND bound = { 0 };
+	bound.cElements = dllMemorySize;
+	bound.lLbound = 0;
+
+	LPBYTE lpArrayData;
+	LPSAFEARRAY lpAsmblyData = SafeArrayCreate(VT_UI1, 1, &bound);
+	ATLASSERT(lpAsmblyData != NULL);
+
+	SafeArrayAccessData(lpAsmblyData, (void**)&lpArrayData);
+	memcpy(lpArrayData, lpDllData, dllMemorySize);
+	SafeArrayUnaccessData(lpAsmblyData);
+
+	return lpAsmblyData;
+}
+
+
+EXTERN_C HRESULT STDAPICALLTYPE LoadInjectorAssembly(IUnknown *pUnk)
+{
+	ATLTRACE(_T("****LoadInjectorAssembly - Start****"));
+
+	CComPtr<_AppDomain> pAppDomain;
+	HRESULT hr = pUnk->QueryInterface(__uuidof(_AppDomain), (void**)&pAppDomain);
+	ATLASSERT(hr == S_OK);
+	LPSAFEARRAY lpAsmblyData = GetInjectedDllAsSafeArray();
+	ATLASSERT(lpAsmblyData != NULL);
+
+	CComPtr<_Assembly> pAssembly;
+	hr = pAppDomain->Load_3(lpAsmblyData, &pAssembly);
+	ATLASSERT(hr==S_OK);
+
+	SafeArrayDestroy(lpAsmblyData);
+
+	CComVariant variant;
+	hr = pAssembly->CreateInstance(W2BSTR(L"Injected.FakesDomainHelper"), &variant);
+	ATLASSERT(hr == S_OK);
+
+	CComPtr<IFakesDomainHelper> pFakesDomainHelper;
+	hr = variant.punkVal->QueryInterface(__uuidof(IFakesDomainHelper), (void**)&pFakesDomainHelper);
+	ATLASSERT(hr == S_OK);
+
+	hr = pFakesDomainHelper->AddResolveEventHandler();
+	ATLASSERT(hr == S_OK);
+	ATLTRACE(_T("****LoadInjectorAssembly - End****"));
+
+	return S_OK;
+}
 
 // CProfilerHook
 HRESULT STDMETHODCALLTYPE CProfilerHook::Initialize(
@@ -136,6 +208,43 @@ HRESULT CProfilerHook::GetMsCorlibRef(ModuleID moduleId, mdModuleRef &mscorlibRe
 		&mscorlibRef), S_OK);
 }
 
+mdSignature CProfilerHook::GetMethodSignatureToken_OBJ(ModuleID moduleID)
+{
+	static COR_SIGNATURE unmanagedCallSignature[] =
+	{
+		IMAGE_CEE_CS_CALLCONV_DEFAULT,          // Default CallKind!
+		0x01,                                   // Parameter count
+		ELEMENT_TYPE_VOID,                      // Return type
+		ELEMENT_TYPE_OBJECT                     // Parameter type (OBJECT)
+	};
+
+	CComPtr<IMetaDataEmit> metaDataEmit;
+	COM_FAIL_MSG_RETURN_OTHER(m_profilerInfo->GetModuleMetaData(moduleID, ofWrite, IID_IMetaDataEmit, (IUnknown**)&metaDataEmit), 0,
+		_T("    ::GetMethodSignatureToken_OBJ(ModuleID) => GetModuleMetaData => 0x%X"));
+
+	mdSignature pmsig;
+	COM_FAIL_MSG_RETURN_OTHER(metaDataEmit->GetTokenFromSig(unmanagedCallSignature, sizeof(unmanagedCallSignature), &pmsig), 0,
+		_T("    ::GetMethodSignatureToken_OBJ(ModuleID) => GetTokenFromSig => 0x%X"));
+	return pmsig;
+}
+
+mdMethodDef CProfilerHook::Get_CurrentDomainMethod(ModuleID moduleID)
+{
+	CComPtr<IMetaDataEmit> metaDataEmit;
+	COM_FAIL_MSG_RETURN_OTHER(m_profilerInfo->GetModuleMetaData(moduleID, ofWrite, IID_IMetaDataEmit, (IUnknown**)&metaDataEmit), 0,
+		_T("    ::Get_CurrentDomainMethod(ModuleID) => GetModuleMetaData => 0x%X"));
+
+	mdModuleRef mscorlibRef;
+	COM_FAIL_RETURN(GetMsCorlibRef(moduleID, mscorlibRef), S_OK);
+	
+	mdMethodDef getCurrentDomain;
+	mdTypeDef tkAppDomain;
+	metaDataEmit->DefineTypeRefByName(mscorlibRef, L"System.AppDomain", &tkAppDomain);
+	BYTE importSig[] = { IMAGE_CEE_CS_CALLCONV_DEFAULT, 0 /*<no args*/, 0x12 /*< ret class*/, 0, 0, 0, 0, 0 };
+	ULONG l = CorSigCompressToken(tkAppDomain, importSig + 3);	//< Add the System.AppDomain token ref
+	metaDataEmit->DefineMemberRef(tkAppDomain, L"get_CurrentDomain", importSig, 3 + l, &getCurrentDomain);
+	return getCurrentDomain;
+}
 
 HRESULT STDMETHODCALLTYPE CProfilerHook::ModuleAttachedToAssembly(
 	/* [in] */ ModuleID moduleId,
@@ -145,12 +254,8 @@ HRESULT STDMETHODCALLTYPE CProfilerHook::ModuleAttachedToAssembly(
 		m_chainedProfiler->ModuleAttachedToAssembly(moduleId, assemblyId);
 
 	std::wstring assemblyName = GetAssemblyName(assemblyId);
-	/*std::wstring modulePath = GetModulePath(moduleId);
-	ATLTRACE(_T("::ModuleAttachedToAssembly(...) => (%X => %s, %X => %s)"),
-		moduleId, W2CT(modulePath.c_str()),
-		assemblyId, W2CT(assemblyName.c_str()));*/
 
-	if (TARGETASSEMBLY1 == GetAssemblyName(assemblyId))
+	if (TESTPLATFORM_UTILITIES_ASSEMBLY == GetAssemblyName(assemblyId))
 	{
 		std::wstring modulePath = GetModulePath(moduleId);
 		ATLTRACE(_T("::ModuleAttachedToAssembly(...) => (%X => %s, %X => %s)"),
@@ -189,9 +294,10 @@ HRESULT STDMETHODCALLTYPE CProfilerHook::ModuleAttachedToAssembly(
 		COM_FAIL_RETURN(metaDataEmit->DefineTypeRefByName(mscorlibRef,
 			L"System.Object", &m_objectTypeRef), S_OK);
 
+		m_pinvokeAttach = CreatePInvokeHook(metaDataEmit);
 	}
 
-	if (TARGETASSEMBLY2B == GetAssemblyName(assemblyId))
+	if (TESTPLATFORM_TESTEXECUTOR_CORE_ASSEMBLY == GetAssemblyName(assemblyId))
 	{
 		std::wstring modulePath = GetModulePath(moduleId);
 		ATLTRACE(_T("::ModuleAttachedToAssembly(...) => (%X => %s, %X => %s)"),
@@ -230,9 +336,52 @@ HRESULT STDMETHODCALLTYPE CProfilerHook::ModuleAttachedToAssembly(
 		COM_FAIL_RETURN(metaDataEmit->DefineTypeRefByName(mscorlibRef,
 			L"System.Object", &m_objectTypeRef), S_OK);
 
+		m_pinvokeAttach = CreatePInvokeHook(metaDataEmit);
+		
 	}
 
 	return S_OK;
+}
+
+mdMethodDef CProfilerHook::CreatePInvokeHook(IMetaDataEmit* pMetaDataEmit){
+	
+	mdTypeDef	tkInjClass;
+
+	HRESULT hr = pMetaDataEmit->DefineTypeDef(L"__ClrProbeInjection_", tdAbstract | tdSealed, m_objectTypeRef, NULL, &tkInjClass);
+	ATLASSERT(hr == S_OK);
+
+	static BYTE sg_sigPLoadInjectorAssembly[] = {
+		0, // IMAGE_CEE_CS_CALLCONV_DEFAULT
+		1, // argument count
+		ELEMENT_TYPE_VOID, // ret = ELEMENT_TYPE_VOID
+		ELEMENT_TYPE_OBJECT
+	};
+
+	mdModuleRef	tkRefClrProbe;
+	hr = pMetaDataEmit->DefineModuleRef(L"SPIKEPROFILER.DLL", &tkRefClrProbe);
+	ATLASSERT(hr == S_OK);
+
+	mdMethodDef	tkAttachDomain;
+	pMetaDataEmit->DefineMethod(tkInjClass, L"LoadInjectorAssembly",
+		mdStatic | mdPinvokeImpl,
+		sg_sigPLoadInjectorAssembly, sizeof(sg_sigPLoadInjectorAssembly),
+		0, 0, &tkAttachDomain
+		);
+	ATLASSERT(hr == S_OK);
+
+	BYTE tiunk = NATIVE_TYPE_IUNKNOWN;
+	mdParamDef paramDef;
+	hr = pMetaDataEmit->DefinePinvokeMap(tkAttachDomain, 0, L"LoadInjectorAssembly", tkRefClrProbe);
+	ATLASSERT(hr == S_OK);
+
+	hr = pMetaDataEmit->DefineParam(tkAttachDomain, 1, L"appDomain",
+		pdIn | pdHasFieldMarshal, 0, NULL, 0, &paramDef);
+	ATLASSERT(hr == S_OK);
+	
+	hr = pMetaDataEmit->SetFieldMarshal(paramDef, &tiunk, 1);
+	ATLASSERT(hr == S_OK);
+
+	return tkAttachDomain;
 }
 
 HRESULT STDMETHODCALLTYPE CProfilerHook::JITCompilationStarted(
@@ -249,78 +398,96 @@ HRESULT STDMETHODCALLTYPE CProfilerHook::JITCompilationStarted(
 
 	if (GetTokenAndModule(functionId, functionToken, moduleId, modulePath, &assemblyId))
 	{
-		if (TARGETASSEMBLY1 == GetAssemblyName(assemblyId))
+
+		if (TESTPLATFORM_UTILITIES_ASSEMBLY == GetAssemblyName(assemblyId))
 		{
-			std::wstring typeName = GetTypeAndMethodName(functionId);
+			std::wstring typeMethodName = GetTypeAndMethodName(functionId);
 
-			if (TARGETMETHOD1 == typeName)
+			if (DEFAULTTESTEXECUTOR_CTOR == typeMethodName)
 			{
-				ATLTRACE(_T("::JITCompilationStarted(%X, ...) => %d, %X => %s"), functionId, functionToken, moduleId, W2CT(typeName.c_str()));
-			
-				LPCBYTE pMethodHeader = NULL;
-				ULONG iMethodSize = 0;
-				COM_FAIL_MSG_RETURN_ERROR(m_profilerInfo->GetILFunctionBody(moduleId, functionToken, &pMethodHeader, &iMethodSize),
-					_T("    ::JITCompilationStarted(...) => GetILFunctionBody => 0x%X"));
+				ATLTRACE(_T("::JITCompilationStarted(%X, ...) => %d, %X => %s"), functionId, functionToken, moduleId, W2CT(typeMethodName.c_str()));
 
-				IMAGE_COR_ILMETHOD* pMethod = (IMAGE_COR_ILMETHOD*)pMethodHeader;
-
-				Method instumentedMethod(pMethod);
 				InstructionList instructions; // NOTE: this IL will be different for an instance method or if the local vars signature is different
+
+				mdMethodDef getCurrentDomain = Get_CurrentDomainMethod(moduleId);
+				instructions.push_back(new Instruction(CEE_CALL, getCurrentDomain));
+				instructions.push_back(new Instruction(CEE_CALL, m_pinvokeAttach));
+
+				InstrumentMethodWith(moduleId, functionToken, instructions);
+			}
+
+			if (DEFAULTTESTEXECUTOR_LAUNCHPROCESS == typeMethodName)
+			{
+				ATLTRACE(_T("::JITCompilationStarted(%X, ...) => %d, %X => %s"), functionId, functionToken, moduleId, W2CT(typeMethodName.c_str()));
+
+				InstructionList instructions; // NOTE: this IL will be different for an instance method or if the local vars signature is different
+
 				instructions.push_back(new Instruction(CEE_LDARG_S, 4));
 				instructions.push_back(new Instruction(CEE_CALL, m_targetLoadProfilerInsteadRef));
 
-				instumentedMethod.InsertInstructionsAtOriginalOffset(0, instructions);
-
-				//instumentedMethod.DumpIL();
-
-				// now to write the method back
-				CComPtr<IMethodMalloc> methodMalloc;
-				COM_FAIL_MSG_RETURN_ERROR(m_profilerInfo->GetILFunctionBodyAllocator(moduleId, &methodMalloc),
-					_T("    ::JITCompilationStarted(...) => GetILFunctionBodyAllocator=> 0x%X"));
-				IMAGE_COR_ILMETHOD* pNewMethod = (IMAGE_COR_ILMETHOD*)methodMalloc->Alloc(instumentedMethod.GetMethodSize());
-				instumentedMethod.WriteMethod(pNewMethod);
-				COM_FAIL_MSG_RETURN_ERROR(m_profilerInfo->SetILFunctionBody(moduleId, functionToken, (LPCBYTE)pNewMethod),
-					_T("    ::JITCompilationStarted(...) => SetILFunctionBody => 0x%X"));
+				InstrumentMethodWith(moduleId, functionToken, instructions);
 			}
+
+			return S_OK;
 		}
 
-		if (TARGETASSEMBLY2B == GetAssemblyName(assemblyId))
+		if (TESTPLATFORM_TESTEXECUTOR_CORE_ASSEMBLY == GetAssemblyName(assemblyId))
 		{
-			std::wstring typeName = GetTypeAndMethodName(functionId);
+			std::wstring typeMethodName = GetTypeAndMethodName(functionId);
 
-			if (TARGETMETHOD2 == typeName)
+			if (TESTEXECUTORMAIN_CTOR == typeMethodName)
 			{
-				ATLTRACE(_T("::JITCompilationStarted(%X, ...) => %d, %X => %s"), functionId, functionToken, moduleId, W2CT(typeName.c_str()));
+				ATLTRACE(_T("::JITCompilationStarted(%X, ...) => %d, %X => %s"), functionId, functionToken, moduleId, W2CT(typeMethodName.c_str()));
 
-				LPCBYTE pMethodHeader = NULL;
-				ULONG iMethodSize = 0;
-				COM_FAIL_MSG_RETURN_ERROR(m_profilerInfo->GetILFunctionBody(moduleId, functionToken, &pMethodHeader, &iMethodSize),
-					_T("    ::JITCompilationStarted(...) => GetILFunctionBody => 0x%X"));
+				InstructionList instructions; 
 
-				IMAGE_COR_ILMETHOD* pMethod = (IMAGE_COR_ILMETHOD*)pMethodHeader;
+				mdMethodDef getCurrentDomain = Get_CurrentDomainMethod(moduleId);
+				instructions.push_back(new Instruction(CEE_CALL, getCurrentDomain));
+				instructions.push_back(new Instruction(CEE_CALL, m_pinvokeAttach));
 
-				Method instumentedMethod(pMethod);
+				InstrumentMethodWith(moduleId, functionToken, instructions);
+
+			}
+
+			if (TESTEXECUTORMAIN_RUN == typeMethodName)
+			{
+				ATLTRACE(_T("::JITCompilationStarted(%X, ...) => %d, %X => %s"), functionId, functionToken, moduleId, W2CT(typeMethodName.c_str()));
+
 				InstructionList instructions; // NOTE: this IL will be different for an instance method or if the local vars signature is different
+
 				instructions.push_back(new Instruction(CEE_LDARG, 0));
 				instructions.push_back(new Instruction(CEE_CALL, m_targetPretendWeLoadedFakesProfilerRef));
 
-				instumentedMethod.InsertInstructionsAtOriginalOffset(0, instructions);
-
-				//instumentedMethod.DumpIL();
-
-				// now to write the method back
-				CComPtr<IMethodMalloc> methodMalloc;
-				COM_FAIL_MSG_RETURN_ERROR(m_profilerInfo->GetILFunctionBodyAllocator(moduleId, &methodMalloc),
-					_T("    ::JITCompilationStarted(...) => GetILFunctionBodyAllocator=> 0x%X"));
-				IMAGE_COR_ILMETHOD* pNewMethod = (IMAGE_COR_ILMETHOD*)methodMalloc->Alloc(instumentedMethod.GetMethodSize());
-				instumentedMethod.WriteMethod(pNewMethod);
-				COM_FAIL_MSG_RETURN_ERROR(m_profilerInfo->SetILFunctionBody(moduleId, functionToken, (LPCBYTE)pNewMethod),
-					_T("    ::JITCompilationStarted(...) => SetILFunctionBody => 0x%X"));
+				InstrumentMethodWith(moduleId, functionToken, instructions);
 			}
 		}
 	}
 
 	return S_OK;
+}
+
+HRESULT CProfilerHook::InstrumentMethodWith(ModuleID moduleId, mdToken functionToken, InstructionList &instructions){
+
+	LPCBYTE pMethodHeader = NULL;
+	ULONG iMethodSize = 0;
+	COM_FAIL_MSG_RETURN_ERROR(m_profilerInfo->GetILFunctionBody(moduleId, functionToken, &pMethodHeader, &iMethodSize),
+		_T("    ::JITCompilationStarted(...) => GetILFunctionBody => 0x%X"));
+
+	IMAGE_COR_ILMETHOD* pMethod = (IMAGE_COR_ILMETHOD*)pMethodHeader;
+	Method instumentedMethod(pMethod);
+
+	instumentedMethod.InsertInstructionsAtOriginalOffset(0, instructions);
+
+	instumentedMethod.DumpIL();
+
+	// now to write the method back
+	CComPtr<IMethodMalloc> methodMalloc;
+	COM_FAIL_MSG_RETURN_ERROR(m_profilerInfo->GetILFunctionBodyAllocator(moduleId, &methodMalloc),
+		_T("    ::JITCompilationStarted(...) => GetILFunctionBodyAllocator=> 0x%X"));
+	IMAGE_COR_ILMETHOD* pNewMethod = (IMAGE_COR_ILMETHOD*)methodMalloc->Alloc(instumentedMethod.GetMethodSize());
+	instumentedMethod.WriteMethod(pNewMethod);
+	COM_FAIL_MSG_RETURN_ERROR(m_profilerInfo->SetILFunctionBody(moduleId, functionToken, (LPCBYTE)pNewMethod),
+		_T("    ::JITCompilationStarted(...) => SetILFunctionBody => 0x%X"));
 }
 
 std::wstring CProfilerHook::GetModulePath(ModuleID moduleId)
@@ -383,3 +550,68 @@ std::wstring CProfilerHook::GetTypeAndMethodName(FunctionID functionId)
 
 	return methodName;
 }
+
+HRESULT CProfilerHook::GetModuleRef(ModuleID moduleId, WCHAR*moduleName, mdModuleRef &mscorlibRef)
+{
+	CComPtr<IMetaDataEmit> metaDataEmit;
+	COM_FAIL_MSG_RETURN_ERROR(m_profilerInfo->GetModuleMetaData(moduleId,
+		ofRead | ofWrite, IID_IMetaDataEmit, (IUnknown**)&metaDataEmit),
+		_T("GetModuleRef(...) => GetModuleMetaData => 0x%X"));
+
+	CComPtr<IMetaDataAssemblyEmit> metaDataAssemblyEmit;
+	COM_FAIL_MSG_RETURN_ERROR(metaDataEmit->QueryInterface(
+		IID_IMetaDataAssemblyEmit, (void**)&metaDataAssemblyEmit),
+		_T("GetModuleRef(...) => QueryInterface => 0x%X"));
+
+	return GetModuleRef4000(metaDataAssemblyEmit, moduleName, mscorlibRef);
+}
+
+HRESULT CProfilerHook::GetModuleRef4000(IMetaDataAssemblyEmit *metaDataAssemblyEmit, WCHAR*moduleName, mdModuleRef &mscorlibRef)
+{
+	ASSEMBLYMETADATA assembly;
+	ZeroMemory(&assembly, sizeof(assembly));
+	assembly.usMajorVersion = 4;
+	assembly.usMinorVersion = 0;
+	assembly.usBuildNumber = 0;
+	assembly.usRevisionNumber = 0;
+	BYTE publicKey[] = { 0xB7, 0x7A, 0x5C, 0x56, 0x19, 0x34, 0xE0, 0x89 };
+	COM_FAIL_MSG_RETURN_ERROR(metaDataAssemblyEmit->DefineAssemblyRef(publicKey,
+		sizeof(publicKey), moduleName, &assembly, NULL, 0, 0,
+		&mscorlibRef), _T("GetModuleRef4000(...) => DefineAssemblyRef => 0x%X"));
+
+	return S_OK;
+}
+
+HRESULT CProfilerHook::GetModuleRef2000(IMetaDataAssemblyEmit *metaDataAssemblyEmit, WCHAR*moduleName, mdModuleRef &mscorlibRef)
+{
+	ASSEMBLYMETADATA assembly;
+	ZeroMemory(&assembly, sizeof(assembly));
+	assembly.usMajorVersion = 2;
+	assembly.usMinorVersion = 0;
+	assembly.usBuildNumber = 0;
+	assembly.usRevisionNumber = 0;
+	BYTE publicKey[] = { 0xB7, 0x7A, 0x5C, 0x56, 0x19, 0x34, 0xE0, 0x89 };
+	COM_FAIL_MSG_RETURN_ERROR(metaDataAssemblyEmit->DefineAssemblyRef(publicKey,
+		sizeof(publicKey), moduleName, &assembly, NULL, 0, 0, &mscorlibRef),
+		_T("GetModuleRef2000(...) => DefineAssemblyRef => 0x%X"));
+
+	return S_OK;
+}
+
+HRESULT CProfilerHook::GetModuleRef2050(IMetaDataAssemblyEmit *metaDataAssemblyEmit, WCHAR*moduleName, mdModuleRef &mscorlibRef)
+{
+	ASSEMBLYMETADATA assembly;
+	ZeroMemory(&assembly, sizeof(assembly));
+	assembly.usMajorVersion = 2;
+	assembly.usMinorVersion = 0;
+	assembly.usBuildNumber = 5;
+	assembly.usRevisionNumber = 0;
+
+	BYTE publicKey[] = { 0x7C, 0xEC, 0x85, 0xD7, 0xBE, 0xA7, 0x79, 0x8E };
+	COM_FAIL_MSG_RETURN_ERROR(metaDataAssemblyEmit->DefineAssemblyRef(publicKey,
+		sizeof(publicKey), moduleName, &assembly, NULL, 0, 0, &mscorlibRef),
+		_T("GetModuleRef2050(...) => DefineAssemblyRef => 0x%X"));
+
+	return S_OK;
+}
+

@@ -10,6 +10,9 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TargetTests", "TargetTests\TargetTests.csproj", "{B54AC6DA-B517-461A-B62E-D621119B651D}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SpikeProfiler", "SpikeProfiler\SpikeProfiler.vcxproj", "{0F92FF72-16CE-4248-A3DC-539D93B0D6CB}"
+	ProjectSection(ProjectDependencies) = postProject
+		{CA738FFB-D159-4924-9ED5-4B54AF16AA63} = {CA738FFB-D159-4924-9ED5-4B54AF16AA63}
+	EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Injected", "Injected\Injected.csproj", "{CA738FFB-D159-4924-9ED5-4B54AF16AA63}"
 EndProject

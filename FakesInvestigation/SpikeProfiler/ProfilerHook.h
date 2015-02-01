@@ -9,6 +9,9 @@
 
 #include "ProfileBase.h"
 #include "ProfilerInfo.h"
+#include "Instruction.h"
+
+extern HINSTANCE g_hInst;
 
 using namespace ATL;
 
@@ -74,6 +77,21 @@ private:
 	CComObject<CProfilerInfo> *m_infoHook;
 
 	CComPtr<ICorProfilerCallback4> m_chainedProfiler;
+
+	mdSignature GetMethodSignatureToken_OBJ(ModuleID moduleID);
+	mdMethodDef Get_CurrentDomainMethod(ModuleID moduleID);
+
+	mdMethodDef m_pinvokeAttach;
+	mdMethodDef CreatePInvokeHook(IMetaDataEmit* pMetaDataEmit);
+
+	HRESULT InstrumentMethodWith(ModuleID moduleId, mdToken functionToken, InstructionList &instructions);
+
+private:
+	HRESULT GetModuleRef(ModuleID moduleId, WCHAR*moduleName, mdModuleRef &mscorlibRef);
+
+	HRESULT GetModuleRef4000(IMetaDataAssemblyEmit *metaDataAssemblyEmit, WCHAR*moduleName, mdModuleRef &mscorlibRef);
+	HRESULT GetModuleRef2000(IMetaDataAssemblyEmit *metaDataAssemblyEmit, WCHAR*moduleName, mdModuleRef &mscorlibRef);
+	HRESULT GetModuleRef2050(IMetaDataAssemblyEmit *metaDataAssemblyEmit, WCHAR*moduleName, mdModuleRef &mscorlibRef);
 
 public:
 	virtual HRESULT STDMETHODCALLTYPE Initialize(

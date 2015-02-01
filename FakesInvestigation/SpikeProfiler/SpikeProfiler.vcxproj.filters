@@ -121,6 +121,10 @@
     <None Include="ProfilerInfo.rgs">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="bindata1.bin">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="..\bin\Release\Injected.dll" />
   </ItemGroup>
   <ItemGroup>
     <Midl Include="SpikeProfiler.idl">

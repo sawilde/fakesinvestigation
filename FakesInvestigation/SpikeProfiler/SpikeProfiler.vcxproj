@@ -294,6 +294,8 @@
     <Text Include="ReadMe.txt" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\bin\Release\Injected.dll" />
+    <None Include="bindata1.bin" />
     <None Include="ProfilerHook.rgs" />
     <None Include="ProfilerInfo.rgs" />
     <None Include="SpikeProfiler.def" />

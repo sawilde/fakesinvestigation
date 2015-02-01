@@ -9,14 +9,14 @@
 
 #include "ProfilerInfoBase.h"
 
+extern class CProfilerHook;
+
 using namespace ATL;
 
 // CProfilerInfoBase
 
 class ATL_NO_VTABLE CProfilerInfo :
 	public CComObjectRootEx<CComMultiThreadModel>,
-	//public CComCoClass<CProfilerInfo>,
-	//public CComObject<IUnknown>,
 	public CProfilerInfoBase
 {
 public:
@@ -46,11 +46,12 @@ public:
 	{
 	}
 
+private:
+	CProfilerHook *m_pProfilerHook;
+
 public:
 	virtual HRESULT STDMETHODCALLTYPE SetEventMask(
 		/* [in] */ DWORD dwEvents);
+
+	friend CProfilerHook;
 };
-
-
-
-//OBJECT_ENTRY_AUTO(__uuidof(ProfilerInfo), CProfilerInfo)

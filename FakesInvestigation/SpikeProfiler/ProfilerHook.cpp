@@ -19,17 +19,18 @@ HRESULT STDMETHODCALLTYPE CProfilerHook::Initialize(
 	ATLTRACE(_T("::Initialize"));
 
 	TCHAR ext[1024] = { 0 };
-	::GetEnvironmentVariable(_T("CHAIN_EXTERNAL_PROFILER"), ext, 1024);
-	ATLTRACE(_T("    ::Initialize(...) => ext = %s"), ext);
 
+	m_profilerInfo = pICorProfilerInfoUnk;
+	::GetEnvironmentVariable(_T("CHAIN_EXTERNAL_PROFILER"), ext, 1024);
 	if (ext[0] != 0)
 	{
+		ATLTRACE(_T("    ::Initialize(...) => ext = %s"), ext);
+		
 		TCHAR loc[1024] = { 0 };
 		::GetEnvironmentVariable(_T("CHAIN_EXTERNAL_PROFILER_LOCATION"), loc, 1024);
 		ATLTRACE(_T("    ::Initialize(...) => loc = %s"), loc);
 
 		CLSID clsid;
-		//HRESULT hr = CLSIDFromProgID(OLESTR("Microsoft.VisualStudio.TraceDebugger.12.0"), &clsid);
 		HRESULT hr = CLSIDFromString(T2OLE(ext), &clsid);
 		ATLASSERT(hr == S_OK);
 
@@ -44,40 +45,46 @@ HRESULT STDMETHODCALLTYPE CProfilerHook::Initialize(
 		hr = DllGetClassObject(clsid, IID_IClassFactory, &pClassFactory);
 		ATLASSERT(hr == S_OK);
 
-		CComPtr<ICorProfilerCallback4> profiler;
-		hr = pClassFactory->CreateInstance(NULL, __uuidof(ICorProfilerCallback4), (void**)&profiler);
+		
+		hr = pClassFactory->CreateInstance(NULL, __uuidof(ICorProfilerCallback4), (void**)&m_chainedProfiler);
 		ATLASSERT(hr == S_OK);
 
-		CComObject<CProfilerInfo> *info;
-		HRESULT hr2 = CComObject<CProfilerInfo>::CreateInstance(&info);
-		ULONG count = info->AddRef();
+		HRESULT hr2 = CComObject<CProfilerInfo>::CreateInstance(&m_infoHook);
+		ULONG count = m_infoHook->AddRef();
 
-		info->m_pProfilerInfo = pICorProfilerInfoUnk;
-		info->m_pProfilerInfo2 = pICorProfilerInfoUnk;
-		info->m_pProfilerInfo3 = pICorProfilerInfoUnk;
-		info->m_pProfilerInfo4 = pICorProfilerInfoUnk;
+		m_infoHook->m_pProfilerHook = this;
 
-		hr = profiler->Initialize(info);
-		ATLTRACE(_T("  ::Initialize => 0x%X"), hr);
+		m_infoHook->SetProfilerInfo(pICorProfilerInfoUnk);
+
+		hr = m_chainedProfiler->Initialize(m_infoHook);
+		ATLTRACE(_T("  ::Initialize => fakes = 0x%X"), hr);
+	}
+	else
+	{
+		DWORD dwMask = AppendProfilerEventMask(0);
+		COM_FAIL_MSG_RETURN_ERROR(m_profilerInfo->SetEventMask(dwMask),
+			_T("    ::Initialize(...) => SetEventMask => 0x%X"));
 	}
 
-	m_profilerInfo = pICorProfilerInfoUnk;
-	DWORD dwMask = 0;
+	return S_OK;
+}
+
+DWORD CProfilerHook::AppendProfilerEventMask(DWORD currentEventMask)
+{
+	DWORD dwMask = currentEventMask;
 	dwMask |= COR_PRF_MONITOR_MODULE_LOADS;			// Controls the ModuleLoad, ModuleUnload, and ModuleAttachedToAssembly callbacks.
 	dwMask |= COR_PRF_MONITOR_JIT_COMPILATION;	    // Controls the JITCompilation, JITFunctionPitched, and JITInlining callbacks.
 	dwMask |= COR_PRF_DISABLE_INLINING;				// Disables all inlining.
 	dwMask |= COR_PRF_DISABLE_OPTIMIZATIONS;		// Disables all code optimizations.
 	dwMask |= COR_PRF_USE_PROFILE_IMAGES;           // Causes the native image search to look for profiler-enhanced images
-
-	COM_FAIL_MSG_RETURN_ERROR(m_profilerInfo->SetEventMask(dwMask),
-		_T("    ::Initialize(...) => SetEventMask => 0x%X"));
-
-	return S_OK;
+	return dwMask;
 }
 
 HRESULT STDMETHODCALLTYPE CProfilerHook::Shutdown(void)
 {
 	ATLTRACE(_T("::Shutdown"));
+	if (m_chainedProfiler != NULL)
+		m_chainedProfiler->Shutdown();
 	return S_OK;
 }
 
@@ -134,11 +141,14 @@ HRESULT STDMETHODCALLTYPE CProfilerHook::ModuleAttachedToAssembly(
 	/* [in] */ ModuleID moduleId,
 	/* [in] */ AssemblyID assemblyId)
 {
+	if (m_chainedProfiler != NULL)
+		m_chainedProfiler->ModuleAttachedToAssembly(moduleId, assemblyId);
+
 	std::wstring assemblyName = GetAssemblyName(assemblyId);
-	std::wstring modulePath = GetModulePath(moduleId);
+	/*std::wstring modulePath = GetModulePath(moduleId);
 	ATLTRACE(_T("::ModuleAttachedToAssembly(...) => (%X => %s, %X => %s)"),
 		moduleId, W2CT(modulePath.c_str()),
-		assemblyId, W2CT(assemblyName.c_str()));
+		assemblyId, W2CT(assemblyName.c_str()));*/
 
 	if (TARGETASSEMBLY1 == GetAssemblyName(assemblyId))
 	{
@@ -229,6 +239,9 @@ HRESULT STDMETHODCALLTYPE CProfilerHook::JITCompilationStarted(
 	/* [in] */ FunctionID functionId,
 	/* [in] */ BOOL fIsSafeToBlock)
 {
+	if (m_chainedProfiler != NULL)
+		m_chainedProfiler->JITCompilationStarted(functionId, fIsSafeToBlock);
+
 	std::wstring modulePath;
 	mdToken functionToken;
 	ModuleID moduleId;
